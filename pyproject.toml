@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hw6-motion-imitation"
+version = "0.1.0"
+description = "10-703 HW6: motion imitation for the Unitree G1 with mjlab"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "mjlab==1.1.1",
+  "rsl-rl-lib==4.0.1",
+  "mujoco==3.5.0",
+  "mujoco-warp==3.5.0.1",
+  "warp-lang==1.12.0",
+  "torch>=2.7",
+  "numpy",
+  "moviepy>=2.0",
+  "matplotlib",
+  "tensorboard",
+]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+"src.assets.robots.unitree_g1" = ["xmls/*.xml", "xmls/assets/*.STL"]
+"src.assets.motions" = ["g1/*.npz", "g1/*.csv"]

@@ -1,0 +1,22 @@
+babel/
+
+# Python / env
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+
+# training outputs and executed notebooks
+logs/
+smoke_test*.ipynb
+*_executed*.ipynb
+
+# LaTeX build files
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+.DS_Store
