@@ -33,8 +33,11 @@ def bad_anchor_pos_z_only(
   Return a boolean tensor of shape (num_envs,) that is True where
   |ref_z - robot_z| > threshold.
   """
-  ## TODO: Implement this
-  raise NotImplementedError("2.1 Q3 bad_anchor_pos_z_only is not implemented!")
+  command = cast(MotionCommand, env.command_manager.get_term(command_name))
+  return (
+    torch.abs(command.anchor_pos_w[:, -1] - command.robot_anchor_pos_w[:, -1])
+    > threshold
+  )
 
 
 def bad_anchor_ori(
@@ -51,8 +54,18 @@ def bad_anchor_ori(
     4. Compare the z-components (index 2) of both projected gravity vectors.
     5. Return True where the absolute difference exceeds the threshold.
   """
-  ## TODO: Implement this
-  raise NotImplementedError("2.1 Q3 bad_anchor_ori is not implemented!")
+  asset: Entity = env.scene[asset_cfg.name]
+  command = cast(MotionCommand, env.command_manager.get_term(command_name))
+  motion_projected_gravity_b = quat_apply_inverse(
+    command.anchor_quat_w, asset.data.gravity_vec_w
+  )
+  robot_projected_gravity_b = quat_apply_inverse(
+    command.robot_anchor_quat_w, asset.data.gravity_vec_w
+  )
+  return (
+    torch.abs(motion_projected_gravity_b[:, 2] - robot_projected_gravity_b[:, 2])
+    > threshold
+  )
 
 
 def bad_motion_body_pos(

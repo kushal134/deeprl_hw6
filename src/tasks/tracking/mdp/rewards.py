@@ -49,8 +49,9 @@ def motion_global_anchor_orientation_error_exp(
   the pattern. The only difference is using quat_error_magnitude instead of
   Euclidean distance.
   """
-  ## TODO: Implement this
-  raise NotImplementedError("2.1 Q1 motion_global_anchor_orientation_error_exp is not implemented!")
+  command = cast(MotionCommand, env.command_manager.get_term(command_name))
+  error = quat_error_magnitude(command.anchor_quat_w, command.robot_anchor_quat_w) ** 2
+  return torch.exp(-error / std**2)
 
 
 def motion_relative_body_position_error_exp(
@@ -92,8 +93,10 @@ def motion_relative_body_orientation_error_exp(
   The pattern is similar but uses quat_error_magnitude instead of squared
   Euclidean distance.
   """
-  ## TODO: Implement this
-  raise NotImplementedError("2.1 Q1 motion_relative_body_orientation_error_exp is not implemented!")
+  command = cast(MotionCommand, env.command_manager.get_term(command_name))
+  body_indexes = _get_body_indexes(command, body_names)
+  error = (quat_error_magnitude(command.body_quat_relative_w[:, body_indexes], command.robot_body_quat_w[:, body_indexes],)** 2)
+  return torch.exp(-error.mean(-1) / std**2)
 
 def motion_global_body_linear_velocity_error_exp(
   env: ManagerBasedRlEnv,
