@@ -138,46 +138,53 @@ Paste the training curves (mean reward and mean episode length) from the noteboo
 
 \subsubsection*{1.1: What would happen if base linear velocity were included in the actor but unavailable at deployment?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+Quite simply, we would need to figure out what to then input to the model at deployment. Akin to how the critic benefits from the base linear velocity, it is not unreasonable to assume that the actor would also depend on it fairly substantially, since it is quite informative for balance and drift, and since the actor would always have it as an input during training in sim. Any deployment solution then, such as replacing it with a zero vector, a noisy estimate, or any other predicted value, would have a high train-test mismatch. This would mean that the actor would be getting base linear velocity inputs that it never really saw during training, and which also do not correspond to the true value. Since the actor's mapping from observations to actions was only ever learned on the accurate in-sim values, these out-of-distribution inputs would make the actions degrade and become unpredictable. Given how unstable humanoid balance is, this would likely lead to poor tracking and, quite possibly, the robot falling.
 \end{solution}
 
 \subsubsection*{1.2: How does observation noise during training help with sim-to-sim (or sim-to-real) transfer?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+Observation noise prevents the actor from relying on the exact values of its observations. Since the actor would be getting slightly perturbed readings at every timestep during training, it cannot build a fragile/feeble strategy around exact values, and is instead forced to respond to more robust patterns across its observations. This also acts as a form of regularization, since small changes in the input would then need to lead to small changes in the actions, which makes the policy smoother. For \emph{sim-to-sim} transfer, the deployment simulator (vanilla MuJoCo) would not produce exactly the same observations as mujoco-warp, since the physics implementation is different and the observations are computed by a separate implementation, so these small discrepancies would look like noise that the policy has already seen during training. In a similar fashion for \emph{sim-to-real}, real sensors such as the IMU and joint encoders are typically noisy and biased, and the policy would then already be robust to this from training.
 \end{solution}
-
 \subsubsection*{1.3: The actor does not observe base linear velocity, but the critic does. Explain why this asymmetric design helps transfer.}
-\begin{solution}[height=7cm]
-% YOUR SOLUTION
+\begin{solution}[height=7cm, overlay unbroken and last={\node[anchor=north west, inner sep=0pt, text width=\tcbtextwidth, align=justify]
+  at ([xshift=5mm, yshift=-3mm]interior.north west) {%
+The critic is allowed to use privileged information (such as the base linear velocity) without any deployment cost since it is only used during training to compute value estimates (and not in deployment). With this extra (and per implementation, noise-free) information, the critic gets a more complete picture of the true robot state, which leads to more accurate value estimates and thus, lower-variance advantage estimates, which in turn give better gradients for the actor during PPO training. On the other hand, the actor only ever observes what is available from onboard sensors, so the network that actually gets deployed does not depend on anything it would not have at deployment. This avoids a train-test mismatch (similar to 1.1). In short, the privileged information is therefore used where it helps (training) and is kept away from where it is possibly unavailable / highly noisy (deployment), so we get the training benefits without the transfer costs.
+};}]
 \end{solution}
 
 \subsection*{Question 2 (Terminal Conditions)}
 
 \subsubsection*{2.1: Why do we use $z$-only position thresholds instead of full 3D distance?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+Since we use a $Z$-up frame, the $z$-only thresholds compare the height of the root and of the end-effectors against the reference. A large deviation in height is a fairly reliable indicator of a catastrophic failure, since for a humanoid, the torso being too low or a foot being off in height almost always means it is collapsing or has fallen. This is irrecoverable and so we can treat it as terminal.
+
+Horizontal ($x,y$) drift on the other hand accumulates gradually from small foot slips over the clip, and the robot can be perfectly upright and tracking the pose well while still having drifted. Such a drift is very recoverable (and is actually already softly penalized by the root position reward). Further, the actor does not observe its global position or base linear velocity (as inputs), so terminating on $x,y$ drift would be punishing it for something it cannot even perceive very well. Thus, it is better to only terminate on irrecoverable states and let the reward handle the softer tracking errors.
 \end{solution}
 
 \subsubsection*{2.2: What would go wrong if we used a tight 3D threshold early in training?}
-\begin{solution}[height=7cm]
-% YOUR SOLUTION
+\begin{solution}[height=7cm, overlay unbroken and last={\node[anchor=north west, inner sep=0pt, text width=\tcbtextwidth, align=justify]
+  at ([xshift=5mm, yshift=-3mm]interior.north west) {%
+The policy is random at the beginning of training, and so a tight 3D threshold would end almost every episode within a few steps, including from harmless $x,y$ drift. The returns would then be uniformly short and similar across actions, so the advantage estimates would be close to zero and noisy, which would in turn give PPO a very weak signal about which actions are actually better. The collected data would also be concentrated at the very start of each episode, so the policy would rarely reach later frames of the motion (and not get learning signal for longer horizons thereby), and the adaptive sampling would also not have any useful contrast since every part of the clip would be failing. This creates a bootstrapping/chicken-and-egg problem, where the policy needs to already be good in order to survive and collect useful data, but it needs that data to get good in the first place. A looser threshold effectively acts as a curriculum that tolerates poor tracking early on.
+};}]
 \end{solution}
 
 \subsubsection*{2.3: What will happen if we remove all the terminal conditions? Discuss how removing terminations affects sample efficiency.}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+If we remove all terminal conditions, episodes would continue through irrecoverable states, such as the robot having fallen, until the episode time limit. Since the batch size per iteration is fixed, a large fraction of it (especially early in training) would then be spent on the robot lying on the floor, which is data that a good policy would never actually encounter (and is also a poor learning signal). These samples also carry almost no learning signal, since the exponential tracking rewards saturate to roughly zero regardless of the action taken, so the advantages would be close to zero as well, and the critic would have to spend capacity fitting values for these mostly off-distribution states. Further, termination also acts as an implicit penalty since falling forfeits all future positive reward, and without it, this penalty becomes weaker and spread out over many steps, making \emph{credit assignment} for the fall harder. Thus, sample efficiency would decrease substantially, though the policy may still learn since the reward still favors tracking but it'll be a lot slower to train.
 \end{solution}
 
 \subsection*{Question 3 (Domain Randomization)}
 
 \subsubsection*{3.1: What parameters in the deployment simulator might differ from the training simulator?}
-\begin{solution}[height=7cm]
-% YOUR SOLUTION
+\begin{solution}[height=7cm, overlay unbroken and last={\node[anchor=north west, inner sep=0pt, text width=\tcbtextwidth, align=justify]
+  at ([xshift=5mm, yshift=-3mm]interior.north west) {%
+Even though vanilla MuJoCo is built from the same robot model and solver settings, it is a different implementation of the physics than mujoco-warp. So the contact and constraint solving could differ, and there is a difference in numerical precision (float32 on GPU vs float64 on CPU). Less saliently, the observations are also rebuilt by a separate implementation from the raw simulator state, so any small discrepancy in how they are computed would show up as a slight input difference. More generally (and especially for sim-to-real), a host of variables can differ, such as foot friction and contact stiffness, link masses, inertias and the center of mass location, actuator properties such as PD gains, torque limits, joint damping and control latency, and sensor properties such as encoder bias and IMU noise. Domain randomization covers several of these directly (friction, COM offset, encoder bias and pushes), and observation noise covers the sensor-level differences, so that a policy trained on this distribution can generalize to the deployment settings.
+};}]
 \end{solution}
 
 \subsubsection*{3.2: What would happen if you randomized friction too aggressively (e.g., range 0.01--10.0)?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+When the friction coefficient is 0.01, the feet cannot generate the horizontal forces needed to push off or balance (it's like an ice rink), while 10 is extremely sticky, where the feet cannot slip or pivot at all (like a glue trap), which could cause the robot to trip. So many of the training environments would be physically impossible to track the motion in, leading to lots of terminations and wasted samples. The returns would also then vary mostly with the friction rather than with the policy's actions, making the advantage estimates much noisier and learning slower or unstable. Further, since the actor does not observe friction, it would need to find a single strategy that works across all of these extremes, so it would likely become overly conservative (e.g. a wider stance and shorter steps), which would hurt tracking accuracy even at normal friction. The randomization range should cover plausible deployment conditions with some margin, and not every conceivable value, since too wide is over-conservative or even unlearnable (vastly different dynamics).
 \end{solution}
 
 
@@ -224,7 +231,7 @@ Paste the detailed metric plots from the notebook (Section~3.5) and answer:
 
 \subsubsection*{4.2: What is the difference between MPKPE and R-MPKPE? Why is R-MPKPE useful as a separate metric?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+MPKPE is the mean over all 14 key bodies of the $L_2$ distance between the robot's and the reference's body positions in the world frame. R-MPKPE is the same, except that each body's position is first expressed relative to its own root, so robot bodies relative to the robot root and reference bodies relative to the reference root. Quite simply, MPKPE captures both the global drift and the pose error, while R-MPKPE only captures the pose error. For example, a robot with a perfect pose that has drifted $0.9$ m would have an MPKPE of roughly $0.9$ m but an R-MPKPE of roughly 0. R-MPKPE is then useful as a separate metric, since a high MPKPE alone cannot tell us whether the robot drifted or actually tracked the pose badly. Since the actor cannot observe its global position or base linear velocity, some drift is expected and accumulates over the clip, inflating MPKPE even when the motion is executed well, so R-MPKPE isolates what the policy actually controls separatly from full error.
 \end{solution}
 
 
