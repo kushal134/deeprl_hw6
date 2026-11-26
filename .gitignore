@@ -5,10 +5,6 @@ __pycache__/
 *.egg-info/
 .venv/
 
-# training outputs and executed notebooks
-logs/
-smoke_test*.ipynb
-*_executed*.ipynb
 
 # LaTeX build files
 *.aux
