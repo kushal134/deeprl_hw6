@@ -79,38 +79,38 @@ Enter your team's names and Andrew IDs in the boxes below. If you do not do this
 Name 1: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{Arnav Goyal}
     \end{center}
 \end{tcolorbox}
 Andrew ID 1: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{arnavgoy}
     \end{center}
 \end{tcolorbox}
     \\
 Name 2: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{Vineeth Bhat}
     \end{center}
 \end{tcolorbox}
 Andrew ID 2: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{vineethb}
     \end{center}
 \end{tcolorbox} \\
 Name 3: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{Kushal Kejriwal}
     \end{center}
 \end{tcolorbox}
 Andrew ID 3: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{kkejriwa}
     \end{center}
 \end{tcolorbox} \\
 \vspace{0.5cm}
@@ -124,7 +124,8 @@ Andrew ID 3: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt
 
 Paste the training curves (mean reward and mean episode length) from the notebook.
 \begin{solution}[height=10cm]
-% YOUR SOLUTION: paste training curves here
+\centering
+\includegraphics[width=\linewidth,height=8.5cm,keepaspectratio]{figs/q_2_2.png}
 \end{solution}
 
 
@@ -138,46 +139,53 @@ Paste the training curves (mean reward and mean episode length) from the noteboo
 
 \subsubsection*{1.1: What would happen if base linear velocity were included in the actor but unavailable at deployment?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+Quite simply, we would need to figure out what to then input to the model at deployment. Akin to how the critic benefits from the base linear velocity, it is not unreasonable to assume that the actor would also depend on it fairly substantially, since it is quite informative for balance and drift, and since the actor would always have it as an input during training in sim. Any deployment solution then, such as replacing it with a zero vector, a noisy estimate, or any other predicted value, would have a high train-test mismatch. This would mean that the actor would be getting base linear velocity inputs that it never really saw during training, and which also do not correspond to the true value. Since the actor's mapping from observations to actions was only ever learned on the accurate in-sim values, these out-of-distribution inputs would make the actions degrade and become unpredictable. Given how unstable humanoid balance is, this would likely lead to poor tracking and, quite possibly, the robot falling.
 \end{solution}
 
 \subsubsection*{1.2: How does observation noise during training help with sim-to-sim (or sim-to-real) transfer?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+Observation noise prevents the actor from relying on the exact values of its observations. Since the actor would be getting slightly perturbed readings at every timestep during training, it cannot build a fragile/feeble strategy around exact values, and is instead forced to respond to more robust patterns across its observations. This also acts as a form of regularization, since small changes in the input would then need to lead to small changes in the actions, which makes the policy smoother. For \emph{sim-to-sim} transfer, the deployment simulator (vanilla MuJoCo) would not produce exactly the same observations as mujoco-warp, since the physics implementation is different and the observations are computed by a separate implementation, so these small discrepancies would look like noise that the policy has already seen during training. In a similar fashion for \emph{sim-to-real}, real sensors such as the IMU and joint encoders are typically noisy and biased, and the policy would then already be robust to this from training.
 \end{solution}
-
 \subsubsection*{1.3: The actor does not observe base linear velocity, but the critic does. Explain why this asymmetric design helps transfer.}
-\begin{solution}[height=7cm]
-% YOUR SOLUTION
+\begin{solution}[height=7cm, overlay unbroken and last={\node[anchor=north west, inner sep=0pt, text width=\tcbtextwidth, align=justify]
+  at ([xshift=5mm, yshift=-3mm]interior.north west) {%
+The critic is allowed to use privileged information (such as the base linear velocity) without any deployment cost since it is only used during training to compute value estimates (and not in deployment). With this extra (and per implementation, noise-free) information, the critic gets a more complete picture of the true robot state, which leads to more accurate value estimates and thus, lower-variance advantage estimates, which in turn give better gradients for the actor during PPO training. On the other hand, the actor only ever observes what is available from onboard sensors, so the network that actually gets deployed does not depend on anything it would not have at deployment. This avoids a train-test mismatch (similar to 1.1). In short, the privileged information is therefore used where it helps (training) and is kept away from where it is possibly unavailable / highly noisy (deployment), so we get the training benefits without the transfer costs.
+};}]
 \end{solution}
 
 \subsection*{Question 2 (Terminal Conditions)}
 
 \subsubsection*{2.1: Why do we use $z$-only position thresholds instead of full 3D distance?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+Since we use a $Z$-up frame, the $z$-only thresholds compare the height of the root and of the end-effectors against the reference. A large deviation in height is a fairly reliable indicator of a catastrophic failure, since for a humanoid, the torso being too low or a foot being off in height almost always means it is collapsing or has fallen. This is irrecoverable and so we can treat it as terminal.
+
+Horizontal ($x,y$) drift on the other hand accumulates gradually from small foot slips over the clip, and the robot can be perfectly upright and tracking the pose well while still having drifted. Such a drift is very recoverable (and is actually already softly penalized by the root position reward). Further, the actor does not observe its global position or base linear velocity (as inputs), so terminating on $x,y$ drift would be punishing it for something it cannot even perceive very well. Thus, it is better to only terminate on irrecoverable states and let the reward handle the softer tracking errors.
 \end{solution}
 
 \subsubsection*{2.2: What would go wrong if we used a tight 3D threshold early in training?}
-\begin{solution}[height=7cm]
-% YOUR SOLUTION
+\begin{solution}[height=7cm, overlay unbroken and last={\node[anchor=north west, inner sep=0pt, text width=\tcbtextwidth, align=justify]
+  at ([xshift=5mm, yshift=-3mm]interior.north west) {%
+The policy is random at the beginning of training, and so a tight 3D threshold would end almost every episode within a few steps, including from harmless $x,y$ drift. The returns would then be uniformly short and similar across actions, so the advantage estimates would be close to zero and noisy, which would in turn give PPO a very weak signal about which actions are actually better. The collected data would also be concentrated at the very start of each episode, so the policy would rarely reach later frames of the motion (and not get learning signal for longer horizons thereby), and the adaptive sampling would also not have any useful contrast since every part of the clip would be failing. This creates a bootstrapping/chicken-and-egg problem, where the policy needs to already be good in order to survive and collect useful data, but it needs that data to get good in the first place. A looser threshold effectively acts as a curriculum that tolerates poor tracking early on.
+};}]
 \end{solution}
 
 \subsubsection*{2.3: What will happen if we remove all the terminal conditions? Discuss how removing terminations affects sample efficiency.}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+If we remove all terminal conditions, episodes would continue through irrecoverable states, such as the robot having fallen, until the episode time limit. Since the batch size per iteration is fixed, a large fraction of it (especially early in training) would then be spent on the robot lying on the floor, which is data that a good policy would never actually encounter (and is also a poor learning signal). These samples also carry almost no learning signal, since the exponential tracking rewards saturate to roughly zero regardless of the action taken, so the advantages would be close to zero as well, and the critic would have to spend capacity fitting values for these mostly off-distribution states. Further, termination also acts as an implicit penalty since falling forfeits all future positive reward, and without it, this penalty becomes weaker and spread out over many steps, making \emph{credit assignment} for the fall harder. Thus, sample efficiency would decrease substantially, though the policy may still learn since the reward still favors tracking but it'll be a lot slower to train.
 \end{solution}
 
 \subsection*{Question 3 (Domain Randomization)}
 
 \subsubsection*{3.1: What parameters in the deployment simulator might differ from the training simulator?}
-\begin{solution}[height=7cm]
-% YOUR SOLUTION
+\begin{solution}[height=7cm, overlay unbroken and last={\node[anchor=north west, inner sep=0pt, text width=\tcbtextwidth, align=justify]
+  at ([xshift=5mm, yshift=-3mm]interior.north west) {%
+Even though vanilla MuJoCo is built from the same robot model and solver settings, it is a different implementation of the physics than mujoco-warp. So the contact and constraint solving could differ, and there is a difference in numerical precision (float32 on GPU vs float64 on CPU). Less saliently, the observations are also rebuilt by a separate implementation from the raw simulator state, so any small discrepancy in how they are computed would show up as a slight input difference. More generally (and especially for sim-to-real), a host of variables can differ, such as foot friction and contact stiffness, link masses, inertias and the center of mass location, actuator properties such as PD gains, torque limits, joint damping and control latency, and sensor properties such as encoder bias and IMU noise. Domain randomization covers several of these directly (friction, COM offset, encoder bias and pushes), and observation noise covers the sensor-level differences, so that a policy trained on this distribution can generalize to the deployment settings.
+};}]
 \end{solution}
 
 \subsubsection*{3.2: What would happen if you randomized friction too aggressively (e.g., range 0.01--10.0)?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+When the friction coefficient is 0.01, the feet cannot generate the horizontal forces needed to push off or balance (it's like an ice rink), while 10 is extremely sticky, where the feet cannot slip or pivot at all (like a glue trap), which could cause the robot to trip. So many of the training environments would be physically impossible to track the motion in, leading to lots of terminations and wasted samples. The returns would also then vary mostly with the friction rather than with the policy's actions, making the advantage estimates much noisier and learning slower or unstable. Further, since the actor does not observe friction, it would need to find a single strategy that works across all of these extremes, so it would likely become overly conservative (e.g. a wider stance and shorter steps), which would hurt tracking accuracy even at normal friction. The randomization range should cover plausible deployment conditions with some margin, and not every conceivable value, since too wide is over-conservative or even unlearnable (vastly different dynamics).
 \end{solution}
 
 
@@ -191,12 +199,15 @@ Paste the training curves (mean reward and mean episode length) from the noteboo
 Paste the screenshot from the notebook.
 \begin{solution}[height=10cm]
 % YOUR SOLUTION: paste screenshot here
+\centering
+\includegraphics[width=\linewidth,height=8.5cm,keepaspectratio]{figs/q_3_1.png}
 \end{solution}
 
 \subsection*{Question 2 (Deploy in Vanilla MuJoCo --- Sim-to-Sim Transfer):}
 Paste the screenshot from the notebook.
 \begin{solution}[height=10cm]
-% YOUR SOLUTION: paste screenshot here
+\centering
+\includegraphics[width=\linewidth,height=8.5cm,keepaspectratio]{figs/q_3_2.png}
 \end{solution}
 
 \newpage
@@ -206,12 +217,24 @@ Paste the tracking error plots from the notebook (Section~3.4) and answer:
 
 \subsubsection*{3.1: Report metrics for both Warp and vanilla MuJoCo (anchor pos/ori error, body pos/ori error, survival rate).}
 \begin{solution}[height=10cm]
-% YOUR SOLUTION: paste plots and report metrics
+\centering
+\includegraphics[width=\linewidth,height=5.5cm,keepaspectratio]{figs/q_3_3.png}
+\vspace{0.5em}
+\begin{tabular}{lcc}
+Metric & Warp & Vanilla MuJoCo \\ \hline
+Mean anchor position error (m) & 0.0592 & 0.0701 \\
+Mean anchor orientation error (rad) & 0.0696 & 0.0652 \\
+Mean body position error (m) & 0.0347 & 0.0360 \\
+Mean body orientation error (rad) & 0.1397 & 0.1477 \\
+Survival rate (\%) & 100.0 & 100.0 \\
+\end{tabular}
 \end{solution}
 
 \subsubsection*{3.2: How do the Warp and vanilla MuJoCo tracking errors compare? Where is the sim-to-sim gap largest?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+The biggest difference is in the anchor position metric where the error in Vanilla MuJoCo is $\sim$0.07mwhich is roughly
+18 $\%$ higher than Warp. This makes sense because we would expect the error to be lower in the same simulator and higher after sim-to-sim transfer.
+The other position and orientation errors barely change between the simulators.
 \end{solution}
 
 \subsection*{Question 4 (Detailed Metrics):}
@@ -219,12 +242,27 @@ Paste the detailed metric plots from the notebook (Section~3.5) and answer:
 
 \subsubsection*{4.1: Report MPKPE, R-MPKPE, EE errors, and joint velocity error for both Warp and vanilla MuJoCo.}
 \begin{solution}[height=10cm]
-% YOUR SOLUTION: paste plots and report metrics
+\centering
+\includegraphics[width=\linewidth,height=5.5cm,keepaspectratio]{figs/q_3_4.png}
+\vspace{0.5em}
+\begin{tabular}{lcc}
+Metric & Warp & Vanilla MuJoCo \\ \hline
+MPKPE, world frame (m) & 0.0756 & 0.0776 \\
+R-MPKPE, root-relative (m) & 0.0323 & 0.0333 \\
+End-effector position error (m) & 0.0556 & 0.0590 \\
+End-effector orientation error (rad) & 0.1752 & 0.1729 \\
+Joint velocity error (rad/s) & 6.1461 & 6.3394 \\
+\end{tabular}
 \end{solution}
 
 \subsubsection*{4.2: What is the difference between MPKPE and R-MPKPE? Why is R-MPKPE useful as a separate metric?}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+Both metrics average a position error over the $B$ tracked bodies, but measure it in different frames:
+MPKPE uses world-frame positions, so it includes any global drift of the robot. R-MPKPE first expresses every body relative to its own anchor (torso), leaving only relative pose errors.
+
+R-MPKPE is a useful metric because the actor never observes the global position of the robot, so it cannot observe or correct global drift; R-MPKPE measures the part of tracking the policy actually controls.
+
+We can also observe the results in the plot above. In the plot, MPKPE grows from about 0.02mto 0.12mover the clip while R-MPKPE stays roughly between 0.015 and 0.06\,m, so most of the world-frame error is drift rather than pose error.
 \end{solution}
 
 
@@ -239,16 +277,24 @@ Paste the detailed metric plots from the notebook (Section~3.5) and answer:
 \subsubsection*{1.1: Paste the training curves for this ablation.}
 \begin{solution}[height=10cm]
 % YOUR SOLUTION: paste training curves here
+\centering
+\includegraphics[width=\linewidth,height=8.5cm,keepaspectratio]{figs/q_4_1.png}
 \end{solution}
 
 \subsubsection*{1.2: Report the survival rate (\%) and mean body position error (m).}
 \begin{solution}[height=4cm]
-% YOUR SOLUTION
+Survival rate: 100\%  \\
+Mean body position error: 0.0336m
 \end{solution}
 
 \subsubsection*{1.3: Did removing observation noise help or hurt training performance? What about deployment performance? Explain.}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+\textbf{Training:} removing observation noise helped slightly. The final mean reward was 6.12 versus 5.97 for the baseline and episode length saturated at about the same point. Without noise the actor sees exact states, so the mapping from observation to action is easier to learn and the policy can track a little more precisely.
+
+\textbf{Deployment:} there was no measurable difference: 
+both policies reached 100\% survival, and the body position error was 0.0336m
+versus 0.0347\,m. This is expected, because the evaluation adds no observation noise (unlike training), so it did not test what the training regime was designed to do.
+
 \end{solution}
 
 \newpage
@@ -257,17 +303,28 @@ Paste the detailed metric plots from the notebook (Section~3.5) and answer:
 
 \subsubsection*{2.1: Paste the training curves for this ablation.}
 \begin{solution}[height=10cm]
-% YOUR SOLUTION: paste training curves here
+\centering
+\includegraphics[width=\linewidth,height=8.5cm,keepaspectratio]{figs/q_4_2.png}
 \end{solution}
 
 \subsubsection*{2.2: Report the survival rate (\%) and mean body position error (m).}
 \begin{solution}[height=4cm]
-% YOUR SOLUTION
+Survival rate: 12.5\% \\
+Mean body position error: 0.0796m
 \end{solution}
 
 \subsubsection*{2.3: How does the no-DR policy perform at deployment compared to the baseline? Explain the gap (if any).}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+
+
+The no-DR policy performs far worse at deployment:
+survival drops from 100\% to 12.5\% and the body position 
+error more than doubles (0.0796mvs.\ 0.0347\,m).
+This is a classic case of overfitting to the training data (We also observe higher 
+final mean reward and faster convergence). 
+The evaluation still randomizes the physics, and has initial-state perturbations, and since the model
+is not robust, it performs poorly during eval.
+
 \end{solution}
 
 \newpage
@@ -276,17 +333,19 @@ Paste the detailed metric plots from the notebook (Section~3.5) and answer:
 
 \subsubsection*{3.1: Paste the training curves for this ablation.}
 \begin{solution}[height=10cm]
-% YOUR SOLUTION: paste training curves here
+\centering
+\includegraphics[width=\linewidth,height=8.5cm,keepaspectratio]{figs/q_4_3.png}
 \end{solution}
 
 \subsubsection*{3.2: Report the survival rate (\%) and mean body position error (m).}
 \begin{solution}[height=4cm]
-% YOUR SOLUTION
+Survival rate: 0\% \\
+Mean body position error: 0.0558m
 \end{solution}
 
 \subsubsection*{3.3: Why does the policy still learn to track (or fail to) without early termination? Relate your answer to what you discussed in 2.3.}
 \begin{solution}[height=7cm]
-% YOUR SOLUTION
+The dense tracking rewards still favor staying close to the reference, so the policy learns something (final mean reward 6.33 vs.\ 5.97 for the baseline). Early learning was much worse, though (reward about $-17$ vs.\ $-1$): as discussed in 2.3, a fallen robot is no longer reset and keeps collecting penalties on the floor, wasting samples. At deployment, runs cross a termination threshold after about 30 steps on average. In training, crossing these thresholds cost only a little reward, since the exponential kernel still rewards loose tracking. Termination acts as a large implicit penalty (losing all future reward), and without it the policy never learns to stay within the height and tilt limits the evaluation enforces.
 \end{solution}
 
 
@@ -340,8 +399,9 @@ Paste the detailed metric plots from the notebook (Section~3.5) and answer:
 \begin{solution}[height=4cm]
 \end{solution}
 
-\textbf{Collaboration}: Detail the work division amongst your group below.
+\textbf{Collaboration}: 
 \begin{solution}[height=4cm]
+    Vineeth worked on the conceptual questions. Kushal worked on the codebase, and Arnav assisted him in writing down the answers to other questions.
 \end{solution}
 
 \noindent\textbf{Time Spent}: How many hours did you spend working on this assignment? Your answer will not affect your grade. Please average your answer over all the members of your team.
@@ -349,13 +409,13 @@ Paste the detailed metric plots from the notebook (Section~3.5) and answer:
 \begin{table}[H]
     \centering
     \begin{tabular}{r|c}
-        Alone &  \hspace{3em} %ANSWER HERE%
+        Alone &  \hspace{3em} 6hrs
         \\ \hline
-        With teammates & \hspace{3em} %ANSWER HERE%
+        With teammates & \hspace{3em} 4hrs
         \\ \hline
-        With other classmates & \hspace{3em} %ANSWER HERE%
+        With other classmates & \hspace{3em} 
         \\ \hline
-        At office hours & \hspace{3em} %ANSWER HERE%
+        At office hours & \hspace{3em}
         \\ \hline
     \end{tabular}
 \end{table}
