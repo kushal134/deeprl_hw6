@@ -232,7 +232,7 @@ Survival rate (\%) & 100.0 & 100.0 \\
 
 \subsubsection*{3.2: How do the Warp and vanilla MuJoCo tracking errors compare? Where is the sim-to-sim gap largest?}
 \begin{solution}[height=7cm]
-The biggest difference is in the anchor position metric where the error in Vanilla MuJoCo is $\sim$0.07mwhich is roughly
+The biggest difference is in the anchor position metric where the error in Vanilla MuJoCo is $\sim$0.07m which is roughly
 18 $\%$ higher than Warp. This makes sense because we would expect the error to be lower in the same simulator and higher after sim-to-sim transfer.
 The other position and orientation errors barely change between the simulators.
 \end{solution}
@@ -262,7 +262,7 @@ MPKPE uses world-frame positions, so it includes any global drift of the robot. 
 
 R-MPKPE is a useful metric because the actor never observes the global position of the robot, so it cannot observe or correct global drift; R-MPKPE measures the part of tracking the policy actually controls.
 
-We can also observe the results in the plot above. In the plot, MPKPE grows from about 0.02mto 0.12mover the clip while R-MPKPE stays roughly between 0.015 and 0.06\,m, so most of the world-frame error is drift rather than pose error.
+We can also observe the results in the plot above. In the plot, MPKPE grows from about 0.02m to 0.12m over the clip while R-MPKPE stays roughly between 0.015 and 0.06\,m, so most of the world-frame error is drift rather than pose error.
 \end{solution}
 
 
@@ -319,7 +319,7 @@ Mean body position error: 0.0796m
 
 The no-DR policy performs far worse at deployment:
 survival drops from 100\% to 12.5\% and the body position 
-error more than doubles (0.0796mvs.\ 0.0347\,m).
+error more than doubles (0.0796m vs.\ 0.0347m).
 This is a classic case of overfitting to the training data (We also observe higher 
 final mean reward and faster convergence). 
 The evaluation still randomizes the physics, and has initial-state perturbations, and since the model
